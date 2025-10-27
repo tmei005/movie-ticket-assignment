@@ -1,0 +1,214 @@
+openapi: 3.0.3
+info:
+  title: Movie Theater Payment API
+  version: 1.0.0
+  description: >
+    Handles client-initiated payments for reserved seats at the movie theater.
+    Clients can create a payment against a reservation, retrieve payment status,
+    and cancel a payment before ticket issuance. This spec focuses on the
+    external client/server interactions for the checkout process.
+servers:
+  - url: https://api.theater.assignment.com
+paths:
+  /payments:
+    post:
+      summary: Create a payment for a reservation
+      tags: [Payments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreateRequest'
+            examples:
+              valid:
+                value:
+                  reservationId: "res_12345"
+                  amount: 32.97
+                  currency: "USD"
+                  paymentMethod:
+                    type: "card"
+                    token: "tok_123xyz"
+      responses:
+        '201':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+              examples:
+                created:
+                  value:
+                    paymentId: "pay_98765"
+                    reservationId: "res_123xyz"
+                    status: "authorized"
+                    amount: 32.97
+                    currency: "USD"
+                    receiptUrl: "https://theater.assignment.com/receipts/pay_98765"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid:
+                  value:
+                    code: "invalid_request"
+                    message: "ReservationId is missing or seats no longer held."
+  /payments/{paymentId}:
+    get:
+      summary: Retrieve a payment by ID
+      tags: [Payments]
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the payment.
+      responses:
+        '200':
+          description: Payment found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+              examples:
+                ok:
+                  value:
+                    paymentId: "pay_98765"
+                    reservationId: "res_123xyz"
+                    status: "captured"
+                    amount: 32.97
+                    currency: "USD"
+                    receiptUrl: "https://theater.assigment.com/receipts/pay_98765"
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                not_found:
+                  value:
+                    code: "not_found"
+                    message: "Payment pay_98765 does not exist."
+    delete:
+      summary: Cancel a payment
+      tags: [Payments]
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the payment to cancel.
+      responses:
+        '200':
+          description: Payment canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCancelResult'
+              examples:
+                canceled:
+                  value:
+                    paymentId: "pay_98765"
+                    status: "canceled"
+                    canceledAt: "2025-10-27T14:05:00Z"
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                not_found:
+                  value:
+                    code: "not_found"
+                    message: "Payment pay_98765 does not exist."
+        '409':
+          description: Conflict (cannot cancel a captured/refunded payment)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                conflict:
+                  value:
+                    code: "conflict"
+                    message: "Payment pay_98765 is already captured and cannot be canceled."
+components:
+  schemas:
+    PaymentCreateRequest:
+      type: object
+      required: [reservationId, amount, currency, paymentMethod]
+      properties:
+        reservationId:
+          type: string
+          description: ID of the reservation holding seats.
+        amount:
+          type: number
+          format: float
+          minimum: 0
+          description: Total to charge.
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO currency code, e.g., USD.
+        paymentMethod:
+          type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [card, wallet]
+            token:
+              type: string
+              description: One-time payment token (for PCI-safe client→server transfer).
+            cardLast4:
+              type: string
+              minLength: 4
+              maxLength: 4
+              description: Optional last 4 digits for display purposes.
+    Payment:
+      type: object
+      required: [paymentId, reservationId, status, amount, currency]
+      properties:
+        paymentId:
+          type: string
+        reservationId:
+          type: string
+        status:
+          type: string
+          enum: [authorized, captured, canceled, failed]
+        amount:
+          type: number
+          format: float
+        currency:
+          type: string
+        receiptUrl:
+          type: string
+          format: uri
+    PaymentCancelResult:
+      type: object
+      required: [paymentId, status, canceledAt]
+      properties:
+        paymentId:
+          type: string
+        status:
+          type: string
+          enum: [canceled]
+        canceledAt:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
